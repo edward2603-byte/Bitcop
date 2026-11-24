@@ -12,10 +12,10 @@ jobs:
       - name: Получение исходников
         uses: actions/checkout@v4
 
-      - name: Установка .NET 8 SDK
+      - name: Установка .NET 10 SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.404
 
       - name: Установка Node.js 20
         uses: actions/setup-node@v4

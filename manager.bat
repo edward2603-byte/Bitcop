@@ -6,17 +6,17 @@ cd /d "%~dp0"
 
 where dotnet >nul 2>nul
 if errorlevel 1 (
-  echo Не найден .NET SDK 8.
-  echo Установите .NET 8 SDK с https://dotnet.microsoft.com/download/dotnet/8.0
+  echo Не найден .NET SDK 10.
+  echo Установите .NET 10 SDK с https://dotnet.microsoft.com/download/dotnet/10.0
   echo Затем закройте это окно и снова запустите manager.bat.
   pause
   exit /b 1
 )
 
-dotnet --list-sdks | findstr /B /C:"8." >nul
+dotnet --list-sdks | findstr /B /C:"10.0.4" >nul
 if errorlevel 1 (
-  echo Не найден .NET SDK 8. Установленная среда dotnet не содержит SDK версии 8.x.
-  echo Скачайте .NET 8 SDK: https://dotnet.microsoft.com/download/dotnet/8.0
+  echo Не найден .NET SDK 10.0.404 или более новый патч ветки 10.0.4xx.
+  echo Скачайте .NET 10 SDK: https://dotnet.microsoft.com/download/dotnet/10.0
   pause
   exit /b 1
 )
