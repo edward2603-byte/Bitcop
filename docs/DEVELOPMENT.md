@@ -1,44 +1,53 @@
 # Разработка и проверка
 
-## Предварительные требования
+## Документированные зависимости
 
 - Windows 10/11;
-- .NET 8 SDK для разработки API и WPF-агента;
-- Node.js 20+ для веб-интерфейса.
+- .NET 8 SDK, доступный как команда `dotnet`;
+- Node.js 20+ и npm;
+- интернет при первом восстановлении NuGet- и npm-пакетов.
 
-Docker необязателен. В текущем окружении найдены Node.js 24.19.0 и npm 10.9.4. Переносимый .NET SDK 8.0.427 установлен локально в `.tools/dotnet`; Docker и `psql` не найдены.
+Переносимый SDK в `.tools` не является частью репозитория и не используется. Docker и PostgreSQL для локального испытания не нужны: API создаёт игнорируемый Git файл `workcontrol.db`.
 
-Для первой опытной проверки `manager.bat` использует локальную SQLite-базу и запускает API на порту 5080. Если Windows запросит доступ через брандмауэр, разрешите его только для частных сетей. На опытном компьютере укажите агенту адрес вида `http://<IP-компьютера-руководителя>:5080`.
-
-## Команды
+## Команды проверки
 
 ```powershell
-# API
-dotnet restore src/server/WorkControl.Api
-dotnet build src/server/WorkControl.Api
-dotnet test tests/WorkControl.Api.Tests
-dotnet run --project src/server/WorkControl.Api
+dotnet restore tests/WorkControl.Api.Tests/WorkControl.Api.Tests.csproj
+dotnet build src/server/WorkControl.Api/WorkControl.Api.csproj -c Release --no-restore
+dotnet build src/agent/WorkControl.Agent/WorkControl.Agent.csproj -c Release --no-restore
+dotnet test tests/WorkControl.Api.Tests/WorkControl.Api.Tests.csproj -c Release --no-restore
+dotnet publish src/agent/WorkControl.Agent/WorkControl.Agent.csproj -c Release --no-restore --self-contained false -p:UseAppHost=false -o release/agent
 
-# веб-интерфейс
-cd src/web
-npm install
-npm run test
-npm run build
-npm run dev
-
-# агент (только Windows)
-dotnet build src/agent/WorkControl.Agent
+npm --prefix src/web ci --no-audit --no-fund
+npm --prefix src/web test
+npm --prefix src/web run build
 ```
 
-## Запуск для пользователей
+Та же последовательность выполняется GitHub Actions на `windows-latest`.
 
-Технические команды разработчика не требуются для повседневной работы. В корне находится только `manager.bat`; он настраивает и запускает панель руководителя. На контролируемый компьютер копируется целиком папка `release/agent`, а запускается находящийся в ней `employee.bat`. На таком компьютере не нужен SDK, но нужен .NET 8 Desktop Runtime.
+## Безопасный локальный режим
 
-## Ручной интеграционный тест
+`manager.bat` запускает API на `http://127.0.0.1:5080` и Vite на `http://127.0.0.1:5173`. Скрипт не повышает права, не меняет брандмауэр и не использует `0.0.0.0`. CORS разрешает только локальные адреса панели.
 
-1. Запустить `manager.bat` и подтвердить создание правила брандмауэра для частной сети.
-2. Открыть веб-интерфейс и убедиться, что на сводке видна последняя связь устройства.
-3. Запустить `release/agent/employee.bat` на опытном компьютере, указать `http://<IP-руководителя>:5080` и отправить событие.
-4. Обновить веб-интерфейс: должны измениться время последней связи, статус «На связи» и колонка «Активность».
+Ручной эквивалент:
 
-Для production автоматическое применение миграций следует отключить и выполнять отдельным контролируемым шагом.
+```powershell
+dotnet run --project src/server/WorkControl.Api --urls http://127.0.0.1:5080
+npm --prefix src/web run dev -- --host 127.0.0.1
+```
+
+## Ручной сквозной тест
+
+1. Запустить `manager.bat`.
+2. Убедиться, что панель показывает зелёную строку «Источник: локальный API», а не жёлтое предупреждение о демонстрационных данных.
+3. На том же компьютере запустить `release/agent/employee.bat`.
+4. Оставить адрес `http://localhost:5080`, отправить событие и обновить панель.
+5. Проверить имя пользователя, имя компьютера, время последней связи, состояние активности и статус «На связи».
+6. Закрыть окно API, отправить событие агентом и убедиться в сообщении о локальном сохранении.
+7. Снова запустить API и отправить следующее событие: сохранённая очередь должна уйти до текущего события.
+
+## Конфигурация
+
+Порог неактивности агента задаётся `WORKCONTROL_IDLE_THRESHOLD_SECONDS` (по умолчанию 60), длительного отсутствия — `WORKCONTROL_LONG_ABSENCE_THRESHOLD_SECONDS` (300). Срок статуса «На связи» на сервере задаётся `Presence:OnlineThresholdSeconds` (90), а максимальный засчитываемый промежуток между сигналами — `Telemetry:MaximumSignalGapSeconds` (90). Эти параметры независимы.
+
+Для production автоматическое применение миграций должно быть отключено. Сетевой и production-запуск не входят в `TASK-002`.

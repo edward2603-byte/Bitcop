@@ -1,7 +1,7 @@
 <Window x:Class="WorkControl.Agent.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="WorkControl — тестовый агент" Width="520" Height="300" ResizeMode="NoResize">
   <StackPanel Margin="24">
     <TextBlock FontSize="20" FontWeight="SemiBold" Text="Тестовый агент WorkControl" />
-    <TextBlock Margin="0,8,0,16" TextWrapping="Wrap" Text="Передаёт состояние активности при запуске и затем каждые 30 секунд. Сбор экранов, сайтов и содержимого ввода в этой версии отсутствует." />
+    <TextBlock Margin="0,8,0,16" TextWrapping="Wrap" Text="Передаёт состояние активности, исходную длительность простоя и признак длительного отсутствия при запуске и затем каждые 30 секунд. Сбор экранов, сайтов и содержимого ввода отсутствует." />
     <TextBlock Text="Адрес API" />
     <TextBox x:Name="ApiUrlBox" Margin="0,4,0,12" Text="http://localhost:5080" />
     <TextBlock Text="Идентификатор агента" />

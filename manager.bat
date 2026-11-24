@@ -1,51 +1,92 @@
-@echo off
+﻿@echo off
+chcp 65001 >nul
 setlocal
-title WorkControl - Manager dashboard
+title WorkControl - локальный запуск
 cd /d "%~dp0"
 
-fltmc >nul 2>&1
+where dotnet >nul 2>nul
 if errorlevel 1 (
-  echo Windows permission is required to allow pilot agents on the private network.
-  powershell -NoProfile -Command "Start-Process -FilePath '%ComSpec%' -ArgumentList '/c \"\"%~f0\"\"' -Verb RunAs"
-  exit /b 0
-)
-
-powershell -NoProfile -Command "if (-not (Get-NetFirewallRule -DisplayName 'WorkControl API TCP 5080' -ErrorAction SilentlyContinue)) { New-NetFirewallRule -DisplayName 'WorkControl API TCP 5080' -Description 'Local WorkControl API for pilot agents' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5080 -Profile Private | Out-Null }"
-
-where npm >nul 2>nul
-if errorlevel 1 (
-  echo Missing Node.js 20 or later. Install it, then run this file again.
+  echo Не найден .NET SDK 8.
+  echo Установите .NET 8 SDK с https://dotnet.microsoft.com/download/dotnet/8.0
+  echo Затем закройте это окно и снова запустите manager.bat.
   pause
   exit /b 1
 )
 
+dotnet --list-sdks | findstr /B /C:"8." >nul
+if errorlevel 1 (
+  echo Не найден .NET SDK 8. Установленная среда dotnet не содержит SDK версии 8.x.
+  echo Скачайте .NET 8 SDK: https://dotnet.microsoft.com/download/dotnet/8.0
+  pause
+  exit /b 1
+)
+
+where node >nul 2>nul
+if errorlevel 1 (
+  echo Не найден Node.js 20 или новее.
+  echo Установите LTS-версию Node.js с https://nodejs.org/
+  echo Затем закройте это окно и снова запустите manager.bat.
+  pause
+  exit /b 1
+)
+
+for /f %%V in ('node -p "process.versions.node.split('.')[0]"') do set "NODE_MAJOR=%%V"
+if not defined NODE_MAJOR (
+  echo Не удалось определить версию Node.js.
+  pause
+  exit /b 1
+)
+if %NODE_MAJOR% LSS 20 (
+  echo Установлена устаревшая версия Node.js. Требуется Node.js 20 или новее.
+  echo Скачайте LTS-версию: https://nodejs.org/
+  pause
+  exit /b 1
+)
+
+where npm >nul 2>nul
+if errorlevel 1 (
+  echo Не найден npm. Переустановите Node.js 20 или новее вместе с npm.
+  pause
+  exit /b 1
+)
+
+echo Проверка серверных компонентов...
+call dotnet restore "src\server\WorkControl.Api\WorkControl.Api.csproj"
+if errorlevel 1 goto :restore_error
+
+echo Подготовка тестового пакета Windows-агента...
+call dotnet publish "src\agent\WorkControl.Agent\WorkControl.Agent.csproj" -c Debug --self-contained false -p:UseAppHost=false -o "release\agent"
+if errorlevel 1 goto :agent_error
+copy /Y "src\agent\WorkControl.Agent\employee.bat" "release\agent\employee.bat" >nul
+
 if not exist "src\web\node_modules" (
-  echo Installing web components. This happens only on first run.
-  call npm --prefix "src\web" install --no-audit --no-fund
-  if errorlevel 1 (
-    echo Web component installation failed.
-    pause
-    exit /b 1
-  )
+  echo Установка веб-компонентов. При первом запуске это может занять несколько минут...
+  call npm --prefix "src\web" ci --no-audit --no-fund
+  if errorlevel 1 goto :web_error
 )
 
-if exist ".tools\dotnet\dotnet.exe" if not exist "release\agent\WorkControl.Agent.dll" (
-  echo Preparing script-based employee agent. This happens only once.
-  call ".tools\dotnet\dotnet.exe" publish "src\agent\WorkControl.Agent\WorkControl.Agent.csproj" -c Debug --self-contained false -p:UseAppHost=false -o "release\agent"
-  if errorlevel 1 (
-    echo Agent package preparation failed. The dashboard can still be used.
-  ) else (
-    copy /Y "src\agent\WorkControl.Agent\employee.bat" "release\agent\employee.bat" >nul
-  )
-)
+echo Запуск API только на текущем компьютере: http://127.0.0.1:5080
+start "WorkControl API - локально" /D "%~dp0" cmd /k "dotnet run --no-restore --project src\server\WorkControl.Api --urls http://127.0.0.1:5080"
+timeout /t 3 /nobreak >nul
 
-if exist ".tools\dotnet\dotnet.exe" (
-  start "WorkControl API" /D "%~dp0" cmd /k ".tools\dotnet\dotnet.exe run --project src\server\WorkControl.Api --urls http://0.0.0.0:5080"
-  timeout /t 3 /nobreak >nul
-)
-
-echo Opening WorkControl dashboard in browser...
-start "WorkControl Web" /D "%~dp0src\web" cmd /k "npm run dev -- --host 127.0.0.1"
+echo Запуск панели только на текущем компьютере: http://127.0.0.1:5173
+start "WorkControl Web - локально" /D "%~dp0src\web" cmd /k "npm run dev -- --host 127.0.0.1"
 timeout /t 2 /nobreak >nul
-start "" "http://localhost:5173"
+start "" "http://127.0.0.1:5173"
 exit /b 0
+
+:restore_error
+echo Не удалось восстановить пакеты API. Проверьте подключение к интернету и повторите запуск.
+pause
+exit /b 1
+
+:agent_error
+echo Не удалось собрать тестовый пакет Windows-агента.
+echo Подробности ошибки показаны выше. Запуск остановлен.
+pause
+exit /b 1
+
+:web_error
+echo Не удалось установить веб-компоненты. Проверьте подключение к интернету и повторите запуск.
+pause
+exit /b 1

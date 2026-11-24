@@ -25,4 +25,15 @@ public sealed record AgentSettings(string ApiUrl, string AgentId)
         Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
         File.WriteAllText(SettingsPath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
     }
+
+    public static void EnsureLocalApiUrl(string apiUrl)
+    {
+        if (!Uri.TryCreate(apiUrl, UriKind.Absolute, out var uri) ||
+            uri.Scheme != Uri.UriSchemeHttp ||
+            !uri.IsLoopback)
+        {
+            throw new InvalidOperationException(
+                "TASK-002 разрешает только локальный адрес API вида http://localhost:5080 или http://127.0.0.1:5080.");
+        }
+    }
 }

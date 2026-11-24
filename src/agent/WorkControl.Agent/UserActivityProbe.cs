@@ -2,20 +2,25 @@ using System.Runtime.InteropServices;
 
 namespace WorkControl.Agent;
 
-public sealed record ActivitySnapshot(string State, long IdleSeconds);
+public sealed record ActivitySnapshot(string State, long IdleSeconds, bool IsLongAbsence);
 
 public static class UserActivityProbe
 {
-    private const uint IdleThresholdSeconds = 5 * 60;
-
-    public static ActivitySnapshot GetCurrent()
+    public static ActivitySnapshot GetCurrent(ActivityOptions options)
     {
         var lastInput = new LastInputInfo { Size = (uint)Marshal.SizeOf<LastInputInfo>() };
-        if (!GetLastInputInfo(ref lastInput)) return new ActivitySnapshot("unknown", 0);
+        if (!GetLastInputInfo(ref lastInput)) return new ActivitySnapshot("unknown", 0, false);
 
         var idleMilliseconds = unchecked((uint)Environment.TickCount - lastInput.Time);
-        var idleSeconds = idleMilliseconds / 1000;
-        return new ActivitySnapshot(idleSeconds >= IdleThresholdSeconds ? "idle" : "active", idleSeconds);
+        return Classify(idleMilliseconds / 1000, options);
+    }
+
+    public static ActivitySnapshot Classify(long idleSeconds, ActivityOptions options)
+    {
+        if (idleSeconds < 0) throw new ArgumentOutOfRangeException(nameof(idleSeconds));
+        var state = idleSeconds >= options.IdleThresholdSeconds ? "idle" : "active";
+        var isLongAbsence = idleSeconds >= options.LongAbsenceThresholdSeconds;
+        return new ActivitySnapshot(state, idleSeconds, isLongAbsence);
     }
 
     [DllImport("user32.dll")]

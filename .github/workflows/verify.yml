@@ -1,0 +1,52 @@
+name: Проверка WorkControl
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - name: Получение исходников
+        uses: actions/checkout@v4
+
+      - name: Установка .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Установка Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: src/web/package-lock.json
+
+      - name: Восстановление .NET-пакетов
+        run: dotnet restore tests/WorkControl.Api.Tests/WorkControl.Api.Tests.csproj
+
+      - name: Сборка API
+        run: dotnet build src/server/WorkControl.Api/WorkControl.Api.csproj -c Release --no-restore
+
+      - name: Сборка Windows-агента
+        run: dotnet build src/agent/WorkControl.Agent/WorkControl.Agent.csproj -c Release --no-restore
+
+      - name: Тесты API и агента
+        run: dotnet test tests/WorkControl.Api.Tests/WorkControl.Api.Tests.csproj -c Release --no-restore
+
+      - name: Установка веб-зависимостей
+        working-directory: src/web
+        run: npm ci --no-audit --no-fund
+
+      - name: Тесты веб-интерфейса
+        working-directory: src/web
+        run: npm test
+
+      - name: Сборка веб-интерфейса
+        working-directory: src/web
+        run: npm run build
+
+      - name: Создание тестового пакета агента
+        run: dotnet publish src/agent/WorkControl.Agent/WorkControl.Agent.csproj -c Release --no-restore --self-contained false -p:UseAppHost=false -o artifacts/agent

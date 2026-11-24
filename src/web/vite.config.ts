@@ -3,6 +3,6 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  server: { proxy: { '/api': 'http://localhost:5080' } },
+  server: { host: '127.0.0.1', proxy: { '/api': 'http://127.0.0.1:5080' } },
   test: { environment: 'jsdom', setupFiles: './src/testSetup.ts' }
 });

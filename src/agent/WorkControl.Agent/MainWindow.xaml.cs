@@ -1,5 +1,4 @@
 using System.Net.Http;
-using System.Net.Http.Json;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
@@ -13,6 +12,8 @@ public partial class MainWindow : Window
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "WorkControl",
         "agent-buffer.db"));
+    private readonly ActivityOptions _activityOptions;
+    private readonly AgentEventDispatcher _dispatcher;
     private readonly DispatcherTimer _heartbeatTimer;
     private bool _isSending;
 
@@ -20,6 +21,8 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _store.Initialize();
+        _activityOptions = ActivityOptions.Load();
+        _dispatcher = new AgentEventDispatcher(_httpClient, _store);
         var settings = AgentSettings.Load();
         ApiUrlBox.Text = settings.ApiUrl;
         AgentIdBox.Text = settings.AgentId;
@@ -45,34 +48,36 @@ public partial class MainWindow : Window
             var agentId = AgentIdBox.Text.Trim();
             var apiUrl = ApiUrlBox.Text.Trim().TrimEnd('/');
             if (string.IsNullOrWhiteSpace(agentId) || string.IsNullOrWhiteSpace(apiUrl)) throw new InvalidOperationException("Укажите адрес API и идентификатор агента.");
+            AgentSettings.EnsureLocalApiUrl(apiUrl);
             new AgentSettings(apiUrl, agentId).Save();
 
-            var activity = UserActivityProbe.GetCurrent();
+            var activity = UserActivityProbe.GetCurrent(_activityOptions);
             var activityEvent = new AgentControlEvent(
                 Guid.NewGuid(),
                 agentId,
                 "activity.status",
                 DateTimeOffset.UtcNow,
-                JsonSerializer.Serialize(new { state = activity.State, idleSeconds = activity.IdleSeconds }));
-            _store.Enqueue(activityEvent);
-            var registration = new
-            {
+                JsonSerializer.Serialize(new
+                {
+                    state = activity.State,
+                    idleSeconds = activity.IdleSeconds,
+                    longAbsence = activity.IsLongAbsence
+                }));
+            var registration = new DeviceRegistration(
                 agentId,
-                computerName = Environment.MachineName,
-                employeeId = (Guid?)null,
-                employeeName = Environment.UserName
-            };
-            var registered = await _httpClient.PostAsJsonAsync($"{apiUrl}/api/devices/register", registration);
-            registered.EnsureSuccessStatusCode();
+                Environment.MachineName,
+                null,
+                Environment.UserName);
+            await _dispatcher.QueueAndSendAsync(apiUrl, registration, activityEvent);
 
-            foreach (var pending in _store.GetPending())
+            var activityLabel = activity.State switch
             {
-                var response = await _httpClient.PostAsJsonAsync($"{apiUrl}/api/telemetry/events", pending);
-                response.EnsureSuccessStatusCode();
-                _store.Remove(pending.EventId);
-            }
-            var activityLabel = activity.State switch { "active" => "активен", "idle" => "неактивен", _ => "не определён" };
-            StatusText.Text = $"На связи: {activityLabel}. Последнее сообщение: {DateTime.Now:HH:mm:ss}.";
+                "active" => "активен",
+                "idle" when activity.IsLongAbsence => "длительное отсутствие",
+                "idle" => "неактивен",
+                _ => "не определён"
+            };
+            StatusText.Text = $"API доступен. Активность: {activityLabel}; простой {activity.IdleSeconds} с. Последнее сообщение: {DateTime.Now:HH:mm:ss}.";
         }
         catch (Exception error)
         {
@@ -85,5 +90,3 @@ public partial class MainWindow : Window
         }
     }
 }
-
-public sealed record AgentControlEvent(Guid EventId, string AgentId, string EventType, DateTimeOffset OccurredAtUtc, string PayloadJson);

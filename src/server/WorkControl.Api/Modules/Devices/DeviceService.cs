@@ -37,7 +37,7 @@ public sealed class DeviceService(WorkControlDbContext db)
             .FirstOrDefaultAsync(cancellationToken);
         if (existingEmployee is not null) return existingEmployee.Value;
 
-        var workGroupId = await db.WorkGroups.Select(x => x.Id).FirstAsync(cancellationToken);
+        var workGroupId = await db.WorkGroups.OrderBy(x => x.Id).Select(x => x.Id).FirstAsync(cancellationToken);
         var employee = new Employee { Id = Guid.NewGuid(), WorkGroupId = workGroupId, DisplayName = displayName };
         db.Employees.Add(employee);
         return employee.Id;
