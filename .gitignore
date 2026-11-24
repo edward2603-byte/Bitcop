@@ -1,0 +1,27 @@
+# .NET
+bin/
+obj/
+
+# Node/Vite
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
+# Local settings and runtime data
+appsettings.Local.json
+config/server.local.env
+*.db
+*.db-shm
+*.db-wal
+release/
+.tools/
+.build-history/
+
+# IDE and OS
+.vs/
+.idea/
+*.user
+Thumbs.db
