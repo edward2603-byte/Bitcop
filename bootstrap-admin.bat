@@ -1,12 +1,16 @@
 @echo off
-chcp 65001 >nul
-setlocal
+setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\bootstrap-admin.ps1"
-if errorlevel 1 (
-  echo Не удалось создать администратора. Подробности показаны выше.
+
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\bootstrap-admin.ps1"
+set "BOOTSTRAP_EXIT=%ERRORLEVEL%"
+
+if not "%BOOTSTRAP_EXIT%"=="0" (
+  echo Administrator bootstrap did not complete. See the messages above.
   pause
-  exit /b 1
+  exit /b %BOOTSTRAP_EXIT%
 )
-echo Готово. Теперь можно запустить manager.bat.
+
+echo Administrator bootstrap completed. You can now start manager.bat.
 pause
+exit /b 0
