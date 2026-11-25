@@ -9,9 +9,8 @@ public partial class MainWindow : Window
 {
     private readonly HttpClient _httpClient = new();
     private readonly LocalEventStore _store = new(Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "WorkControl",
-        "agent-buffer.db"));
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WorkControl", "agent-buffer.db"));
+    private readonly AgentCredentialStore _credentialStore = new();
     private readonly ActivityOptions _activityOptions;
     private readonly AgentEventDispatcher _dispatcher;
     private readonly DispatcherTimer _heartbeatTimer;
@@ -31,10 +30,42 @@ public partial class MainWindow : Window
         _heartbeatTimer.Tick += async (_, _) => await SendControlEventAsync(isManual: false);
         Loaded += async (_, _) =>
         {
-            await SendControlEventAsync(isManual: false);
+            if (HasCredential()) await SendControlEventAsync(isManual: false);
+            else StatusText.Text = "Введите одноразовый код, созданный администратором. Секрет агента будет защищён Windows DPAPI.";
             _heartbeatTimer.Start();
         };
         Closed += (_, _) => _heartbeatTimer.Stop();
+    }
+
+    private bool HasCredential()
+    {
+        var settings = AgentSettings.Load();
+        return settings.KeyId.HasValue && !string.IsNullOrWhiteSpace(_credentialStore.Load());
+    }
+
+    private async void EnrollButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isSending) return;
+        _isSending = true;
+        try
+        {
+            var apiUrl = ApiUrlBox.Text.Trim().TrimEnd('/');
+            var code = EnrollmentCodeBox.Text.Trim();
+            AgentSettings.EnsureApiUrl(apiUrl);
+            if (string.IsNullOrWhiteSpace(code)) throw new InvalidOperationException("Введите одноразовый код подключения.");
+            var enrolled = await _dispatcher.EnrollAsync(apiUrl, code);
+            new AgentSettings(apiUrl, enrolled.AgentId, enrolled.DeviceId, enrolled.KeyId).Save();
+            _credentialStore.Save(enrolled.Secret);
+            AgentIdBox.Text = enrolled.AgentId;
+            EnrollmentCodeBox.Clear();
+            StatusText.Text = "Компьютер подключён и ожидает одобрения администратора. До одобрения телеметрия не принимается.";
+        }
+        catch (Exception error)
+        {
+            StatusText.Text = $"Подключение не выполнено: {error.Message}";
+            MessageBox.Show(StatusText.Text, "WorkControl", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally { _isSending = false; }
     }
 
     private async void SendButton_Click(object sender, RoutedEventArgs e) => await SendControlEventAsync(isManual: true);
@@ -45,30 +76,17 @@ public partial class MainWindow : Window
         _isSending = true;
         try
         {
-            var agentId = AgentIdBox.Text.Trim();
-            var apiUrl = ApiUrlBox.Text.Trim().TrimEnd('/');
-            if (string.IsNullOrWhiteSpace(agentId) || string.IsNullOrWhiteSpace(apiUrl)) throw new InvalidOperationException("Укажите адрес API и идентификатор агента.");
-            AgentSettings.EnsureLocalApiUrl(apiUrl);
-            new AgentSettings(apiUrl, agentId).Save();
+            var settings = AgentSettings.Load();
+            var secret = _credentialStore.Load();
+            if (!settings.KeyId.HasValue || string.IsNullOrWhiteSpace(secret))
+                throw new InvalidOperationException("Сначала подключите компьютер одноразовым кодом.");
+            AgentSettings.EnsureApiUrl(settings.ApiUrl);
 
             var activity = UserActivityProbe.GetCurrent(_activityOptions);
             var activityEvent = new AgentControlEvent(
-                Guid.NewGuid(),
-                agentId,
-                "activity.status",
-                DateTimeOffset.UtcNow,
-                JsonSerializer.Serialize(new
-                {
-                    state = activity.State,
-                    idleSeconds = activity.IdleSeconds,
-                    longAbsence = activity.IsLongAbsence
-                }));
-            var registration = new DeviceRegistration(
-                agentId,
-                Environment.MachineName,
-                null,
-                Environment.UserName);
-            await _dispatcher.QueueAndSendAsync(apiUrl, registration, activityEvent);
+                Guid.NewGuid(), settings.AgentId, "activity.status", DateTimeOffset.UtcNow,
+                JsonSerializer.Serialize(new { state = activity.State, idleSeconds = activity.IdleSeconds, longAbsence = activity.IsLongAbsence }));
+            await _dispatcher.QueueAndSendAsync(settings.ApiUrl, new AgentCredential(settings.KeyId.Value, secret), activityEvent);
 
             var activityLabel = activity.State switch
             {
@@ -81,12 +99,9 @@ public partial class MainWindow : Window
         }
         catch (Exception error)
         {
-            StatusText.Text = $"Нет связи. Событие сохранено локально: {error.Message}";
+            StatusText.Text = $"Нет связи или устройство ещё не одобрено. Событие сохранено локально: {error.Message}";
             if (isManual) MessageBox.Show(StatusText.Text, "WorkControl", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
-        finally
-        {
-            _isSending = false;
-        }
+        finally { _isSending = false; }
     }
 }

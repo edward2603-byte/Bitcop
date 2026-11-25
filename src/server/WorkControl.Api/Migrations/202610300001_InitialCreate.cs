@@ -1,24 +1,28 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using WorkControl.Api.Infrastructure;
 
 #nullable disable
 
 namespace WorkControl.Api.Migrations;
 
+[DbContext(typeof(WorkControlDbContext))]
+[Migration("202610300001_InitialCreate")]
 public partial class InitialCreate : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.CreateTable(name: "Organizations", columns: table => new
         {
-            Id = table.Column<Guid>(type: "uuid", nullable: false),
-            Name = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false)
+            Id = table.Column<Guid>(nullable: false),
+            Name = table.Column<string>(maxLength: 256, nullable: false)
         }, constraints: table => table.PrimaryKey("PK_Organizations", x => x.Id));
         migrationBuilder.CreateTable(name: "WorkGroups", columns: table => new
         {
-            Id = table.Column<Guid>(type: "uuid", nullable: false),
-            OrganizationId = table.Column<Guid>(type: "uuid", nullable: false),
-            Name = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false)
+            Id = table.Column<Guid>(nullable: false),
+            OrganizationId = table.Column<Guid>(nullable: false),
+            Name = table.Column<string>(maxLength: 256, nullable: false)
         }, constraints: table =>
         {
             table.PrimaryKey("PK_WorkGroups", x => x.Id);
@@ -26,10 +30,10 @@ public partial class InitialCreate : Migration
         });
         migrationBuilder.CreateTable(name: "Employees", columns: table => new
         {
-            Id = table.Column<Guid>(type: "uuid", nullable: false),
-            WorkGroupId = table.Column<Guid>(type: "uuid", nullable: false),
-            DisplayName = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
-            IsArchived = table.Column<bool>(type: "boolean", nullable: false)
+            Id = table.Column<Guid>(nullable: false),
+            WorkGroupId = table.Column<Guid>(nullable: false),
+            DisplayName = table.Column<string>(maxLength: 256, nullable: false),
+            IsArchived = table.Column<bool>(nullable: false)
         }, constraints: table =>
         {
             table.PrimaryKey("PK_Employees", x => x.Id);
@@ -37,11 +41,11 @@ public partial class InitialCreate : Migration
         });
         migrationBuilder.CreateTable(name: "Devices", columns: table => new
         {
-            Id = table.Column<Guid>(type: "uuid", nullable: false),
-            EmployeeId = table.Column<Guid>(type: "uuid", nullable: false),
-            AgentId = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
-            ComputerName = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
-            LastSeenAtUtc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+            Id = table.Column<Guid>(nullable: false),
+            EmployeeId = table.Column<Guid>(nullable: false),
+            AgentId = table.Column<string>(maxLength: 128, nullable: false),
+            ComputerName = table.Column<string>(maxLength: 128, nullable: false),
+            LastSeenAtUtc = table.Column<DateTimeOffset>(nullable: true)
         }, constraints: table =>
         {
             table.PrimaryKey("PK_Devices", x => x.Id);
@@ -49,13 +53,13 @@ public partial class InitialCreate : Migration
         });
         migrationBuilder.CreateTable(name: "AgentEvents", columns: table => new
         {
-            Id = table.Column<Guid>(type: "uuid", nullable: false),
-            DeviceId = table.Column<Guid>(type: "uuid", nullable: false),
-            EventId = table.Column<Guid>(type: "uuid", nullable: false),
-            EventType = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
-            OccurredAtUtc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-            ReceivedAtUtc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-            PayloadJson = table.Column<string>(type: "jsonb", nullable: true)
+            Id = table.Column<Guid>(nullable: false),
+            DeviceId = table.Column<Guid>(nullable: false),
+            EventId = table.Column<Guid>(nullable: false),
+            EventType = table.Column<string>(maxLength: 64, nullable: false),
+            OccurredAtUtc = table.Column<DateTimeOffset>(nullable: false),
+            ReceivedAtUtc = table.Column<DateTimeOffset>(nullable: false),
+            PayloadJson = table.Column<string>(nullable: true)
         }, constraints: table =>
         {
             table.PrimaryKey("PK_AgentEvents", x => x.Id);

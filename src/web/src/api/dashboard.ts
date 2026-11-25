@@ -1,3 +1,5 @@
+import { ApiError } from './auth';
+
 export type DashboardRow = {
   employee: string;
   group: string;
@@ -9,21 +11,10 @@ export type DashboardRow = {
   activityState: string;
 };
 
-const demoRows: DashboardRow[] = [
-  { employee: 'Анна Демонстрационная', group: 'Проектный отдел', computer: 'DEMO-PC', lastSeenAtUtc: null, status: 'Демо', observedSeconds: 3_600, activeSeconds: 2_400, activityState: 'Демо' }
-];
-
-export type DashboardResult = {
-  rows: DashboardRow[];
-  source: 'api' | 'demo';
-};
-
-export async function loadDashboard(): Promise<DashboardResult> {
-  try {
-    const response = await fetch('/api/dashboard');
-    if (!response.ok) throw new Error('API недоступен');
-    return { rows: await response.json() as DashboardRow[], source: 'api' };
-  } catch {
-    return { rows: demoRows, source: 'demo' };
-  }
+export async function loadDashboard(): Promise<DashboardRow[]> {
+  let response: Response;
+  try { response = await fetch('/api/dashboard', { credentials: 'include' }); }
+  catch { throw new ApiError(0, 'API недоступен. Демонстрационные данные не подставляются.'); }
+  if (!response.ok) throw new ApiError(response.status, response.status === 401 ? 'Требуется вход' : response.status === 403 ? 'Недостаточно прав' : `Ошибка API: ${response.status}`);
+  return response.json();
 }

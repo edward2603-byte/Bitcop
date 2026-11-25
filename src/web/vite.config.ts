@@ -4,5 +4,5 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   server: { host: '127.0.0.1', proxy: { '/api': 'http://127.0.0.1:5080' } },
-  test: { environment: 'jsdom', setupFiles: './src/testSetup.ts' }
+  test: { environment: 'jsdom', setupFiles: './src/testSetup.ts', pool: 'threads', maxWorkers: 1, minWorkers: 1 }
 });

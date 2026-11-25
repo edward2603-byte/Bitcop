@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace WorkControl.Agent;
 
-public sealed record AgentSettings(string ApiUrl, string AgentId)
+public sealed record AgentSettings(string ApiUrl, string AgentId, Guid? DeviceId = null, Guid? KeyId = null)
 {
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -17,7 +17,7 @@ public sealed record AgentSettings(string ApiUrl, string AgentId)
             var saved = JsonSerializer.Deserialize<AgentSettings>(File.ReadAllText(SettingsPath));
             if (saved is not null) return string.IsNullOrWhiteSpace(configuredUrl) ? saved : saved with { ApiUrl = configuredUrl };
         }
-        return new AgentSettings(configuredUrl ?? "http://localhost:5080", $"agent-{Guid.NewGuid():N}");
+        return new AgentSettings(configuredUrl ?? "http://localhost:5080", string.Empty);
     }
 
     public void Save()
@@ -26,14 +26,13 @@ public sealed record AgentSettings(string ApiUrl, string AgentId)
         File.WriteAllText(SettingsPath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
     }
 
-    public static void EnsureLocalApiUrl(string apiUrl)
+    public static void EnsureApiUrl(string apiUrl)
     {
         if (!Uri.TryCreate(apiUrl, UriKind.Absolute, out var uri) ||
-            uri.Scheme != Uri.UriSchemeHttp ||
-            !uri.IsLoopback)
+            (uri.Scheme != Uri.UriSchemeHttps && (uri.Scheme != Uri.UriSchemeHttp || !uri.IsLoopback)))
         {
             throw new InvalidOperationException(
-                "TASK-002 разрешает только локальный адрес API вида http://localhost:5080 или http://127.0.0.1:5080.");
+                "Разрешён локальный HTTP (localhost/127.0.0.1) или доверенный HTTPS-адрес пилота. Проверка TLS не отключается.");
         }
     }
 }

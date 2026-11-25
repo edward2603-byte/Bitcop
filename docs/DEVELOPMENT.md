@@ -1,55 +1,58 @@
-# Разработка и проверка
+# Разработка WorkControl
 
-## Документированные зависимости
+## Зависимости
 
-- Windows 11 либо поддерживаемая для .NET 10 редакция Windows 10 LTSC/Enterprise;
-- .NET 10 SDK `10.0.404` или более новый патч ветки `10.0.4xx`, доступный как команда `dotnet`;
+- .NET SDK 10.0.404 (ветка 10.0.4xx);
 - Node.js 20+ и npm;
-- интернет при первом восстановлении NuGet- и npm-пакетов.
+- Windows для сборки и запуска WPF-агента.
 
-Переносимый SDK в `.tools` не является частью репозитория и не используется. Docker и PostgreSQL для локального испытания не нужны: API создаёт игнорируемый Git файл `workcontrol.db`.
-
-Версия SDK закреплена в корневом `global.json`. API и тесты используют EF Core/ASP.NET Core `10.0.15`, PostgreSQL-провайдер Npgsql EF `10.0.4`, агент — `Microsoft.Data.Sqlite` `10.0.15`.
-
-## Команды проверки
+## Сборка и тесты
 
 ```powershell
-dotnet restore tests/WorkControl.Api.Tests/WorkControl.Api.Tests.csproj
-dotnet build src/server/WorkControl.Api/WorkControl.Api.csproj -c Release --no-restore
-dotnet build src/agent/WorkControl.Agent/WorkControl.Agent.csproj -c Release --no-restore
-dotnet test tests/WorkControl.Api.Tests/WorkControl.Api.Tests.csproj -c Release --no-restore
-dotnet publish src/agent/WorkControl.Agent/WorkControl.Agent.csproj -c Release --no-restore --self-contained false -p:UseAppHost=false -o release/agent
-
-npm --prefix src/web ci --no-audit --no-fund
-npm --prefix src/web test
-npm --prefix src/web run build
+dotnet restore tests\WorkControl.Api.Tests\WorkControl.Api.Tests.csproj
+dotnet build tests\WorkControl.Api.Tests\WorkControl.Api.Tests.csproj -m:1
+dotnet test tests\WorkControl.Api.Tests\WorkControl.Api.Tests.csproj -m:1
+npm --prefix src\web ci --no-audit --no-fund
+npm --prefix src\web test
+npm --prefix src\web run build
+dotnet publish src\agent\WorkControl.Agent\WorkControl.Agent.csproj -c Release --self-contained false -p:UseAppHost=false -o release\agent
 ```
 
-Та же последовательность выполняется GitHub Actions на `windows-latest`.
+`-m:1` необязателен в CI; он полезен на текущей Windows-машине, где параллельный дочерний узел MSBuild однажды завершился аварийно без ошибки исходного кода.
 
-## Безопасный локальный режим
+## База данных
 
-`manager.bat` запускает API на `http://127.0.0.1:5080` и Vite на `http://127.0.0.1:5173`. Скрипт не повышает права, не меняет брандмауэр и не использует `0.0.0.0`. CORS разрешает только локальные адреса панели.
+Runtime использует `Database.Migrate`, а не `EnsureDeleted`/`EnsureCreated`. Для SQLite-базы TASK-002 без таблицы истории выполняется одноразовая безопасная baseline-регистрация старой миграции, после чего применяется `SecurePilot`. Существующие устройства получают статус `Active`, события и связи сохраняются; для дальнейшей отправки старый агент необходимо переподключить новым одноразовым кодом.
 
-Ручной эквивалент:
+Перед изменением схемы:
+
+1. остановить API;
+2. скопировать SQLite-файл в `backups` (каталог игнорируется Git);
+3. зафиксировать SHA-256;
+4. проверить чистую базу и обновление копии существующей базы;
+5. не помечать PostgreSQL успешным без реального экземпляра.
+
+Тесты обязаны задавать connection string через ранний `UseSetting`; поздний `ConfigureAppConfiguration` нельзя использовать для параметров, читаемых в top-level startup.
+
+## Локальный ADMIN
 
 ```powershell
-dotnet run --project src/server/WorkControl.Api --urls http://127.0.0.1:5080
-npm --prefix src/web run dev -- --host 127.0.0.1
+.\bootstrap-admin.bat
 ```
 
-## Ручной сквозной тест
+Или CLI: задать `WORKCONTROL_BOOTSTRAP_EMAIL`, `WORKCONTROL_BOOTSTRAP_PASSWORD` только в текущем процессе и выполнить `dotnet run --project src\server\WorkControl.Api -- --bootstrap-admin`. Процедура прекращает работу, если пользователь уже существует.
 
-1. Запустить `manager.bat`.
-2. Убедиться, что панель показывает зелёную строку «Источник: локальный API», а не жёлтое предупреждение о демонстрационных данных.
-3. На том же компьютере запустить `release/agent/employee.bat`.
-4. Оставить адрес `http://localhost:5080`, отправить событие и обновить панель.
-5. Проверить имя пользователя, имя компьютера, время последней связи, состояние активности и статус «На связи».
-6. Закрыть окно API, отправить событие агентом и убедиться в сообщении о локальном сохранении.
-7. Снова запустить API и отправить следующее событие: сохранённая очередь должна уйти до текущего события.
+## Контуры безопасности
 
-## Конфигурация
+- browser: Identity cookie + CSRF;
+- agent: отдельная схема `WorkControl KeyId.Secret`, DeviceId берётся только из claims;
+- сервер хранит хэш секрета, агент — DPAPI CurrentUser;
+- ADMIN endpoints требуют role policy; dashboard ограничивает группы в `IQueryable` до выполнения SQL;
+- LOCAL принимает HTTP только на loopback; агент принимает сетевой адрес только с HTTPS;
+- PILOT обслуживает web и API с одного origin и не стартует без обязательных параметров.
 
-Порог неактивности агента задаётся `WORKCONTROL_IDLE_THRESHOLD_SECONDS` (по умолчанию 60), длительного отсутствия — `WORKCONTROL_LONG_ABSENCE_THRESHOLD_SECONDS` (300). Срок статуса «На связи» на сервере задаётся `Presence:OnlineThresholdSeconds` (90), а максимальный засчитываемый промежуток между сигналами — `Telemetry:MaximumSignalGapSeconds` (90). Эти параметры независимы.
+Секреты, PFX, реальные данные, runtime-БД, Data Protection keys и DPAPI-файл не коммитить.
 
-Для production автоматическое применение миграций должно быть отключено. Сетевой и production-запуск не входят в `TASK-002`.
+## Ограничения
+
+UI управления пользователями/группами и автоматическая плановая ротация агента не реализованы. Нагрузочное испытание и реальный PostgreSQL/PILOT требуют отдельной инфраструктуры.

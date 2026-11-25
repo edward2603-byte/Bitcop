@@ -2,17 +2,8 @@ using System.ComponentModel.DataAnnotations;
 
 namespace WorkControl.Api.Contracts;
 
-public sealed record RegisterDeviceRequest(
-    [property: Required, MaxLength(128)] string AgentId,
-    [property: Required, MaxLength(128)] string ComputerName,
-    Guid? EmployeeId,
-    [property: MaxLength(128)] string? EmployeeName = null);
-
-public sealed record RegisterDeviceResponse(Guid DeviceId, DateTimeOffset RegisteredAtUtc);
-
 public sealed record AgentEventRequest(
     Guid EventId,
-    [property: Required, MaxLength(128)] string AgentId,
     [property: Required, MaxLength(64)] string EventType,
     DateTimeOffset OccurredAtUtc,
     string? PayloadJson);
@@ -28,3 +19,13 @@ public sealed record DashboardRow(
     long ObservedSeconds,
     long ActiveSeconds,
     string ActivityState);
+
+public sealed record LoginRequest([property: Required, EmailAddress, MaxLength(256)] string Email, [property: Required, MaxLength(256)] string Password);
+public sealed record CurrentUserResponse(Guid Id, string Email, IReadOnlyList<string> Roles);
+public sealed record CreateEnrollmentResponse(string Code, DateTimeOffset ExpiresAtUtc);
+public sealed record EnrollAgentRequest([property: Required, MaxLength(256)] string Code, [property: Required, MaxLength(128)] string ComputerName);
+public sealed record EnrollAgentResponse(Guid DeviceId, string AgentId, Guid KeyId, string Secret, string Status);
+public sealed record ApproveDeviceRequest(Guid EmployeeId);
+public sealed record RotateCredentialResponse(Guid KeyId, string Secret, DateTimeOffset ExpiresAtUtc);
+public sealed record PendingDeviceResponse(Guid DeviceId, string ComputerName, string Status, DateTimeOffset CreatedAtUtc);
+public sealed record EmployeeOptionResponse(Guid Id, string DisplayName, string Group);
