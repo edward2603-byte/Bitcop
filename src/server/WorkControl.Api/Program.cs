@@ -241,9 +241,21 @@ app.MapPost("/api/admin/enrollments", async (HttpContext context, IAntiforgery a
     return Results.Ok(await service.CreateEnrollmentAsync(GetUserId(context.User)!.Value, ct));
 }).RequireAuthorization("Admin");
 app.MapGet("/api/admin/devices/pending", async (WorkControlDbContext db, CancellationToken ct) =>
-    Results.Ok(await db.Devices.AsNoTracking().Where(x => x.Status == DeviceStatuses.Pending)
-        .Select(x => new PendingDeviceResponse(x.Id, x.ComputerName, x.Status, x.Credentials.Min(c => c.CreatedAtUtc))).ToListAsync(ct)))
-    .RequireAuthorization("Admin");
+{
+    // SQLite cannot translate MIN(DateTimeOffset) consistently. Pending devices are an
+    // intentionally small admin queue, so calculate the credential issuance time after
+    // the filtered query without changing the persisted schema.
+    var devices = await db.Devices.AsNoTracking()
+        .Where(x => x.Status == DeviceStatuses.Pending)
+        .Include(x => x.Credentials)
+        .OrderBy(x => x.ComputerName)
+        .ToListAsync(ct);
+    return Results.Ok(devices.Select(x => new PendingDeviceResponse(
+        x.Id,
+        x.ComputerName,
+        x.Status,
+        x.Credentials.OrderBy(c => c.CreatedAtUtc).Select(c => c.CreatedAtUtc).FirstOrDefault())));
+}).RequireAuthorization("Admin");
 app.MapGet("/api/admin/employees", async (WorkControlDbContext db, CancellationToken ct) =>
     Results.Ok(await db.Employees.AsNoTracking().Where(x => !x.IsArchived)
         .OrderBy(x => x.DisplayName)

@@ -64,6 +64,10 @@ public sealed class ApiFlowTests : IAsyncLifetime
         enrolledResponse.EnsureSuccessStatusCode();
         var enrolled = await enrolledResponse.Content.ReadFromJsonAsync<EnrollAgentResponse>();
         Assert.NotNull(enrolled); Assert.Equal(DeviceStatuses.Pending, enrolled.Status);
+        var pending = await _client.GetFromJsonAsync<List<PendingDeviceResponse>>("/api/admin/devices/pending");
+        Assert.Contains(pending!, device => device.DeviceId == enrolled.DeviceId && device.ComputerName == "INTEGRATION-PC");
+        var employees = await _client.GetFromJsonAsync<List<EmployeeOptionResponse>>("/api/admin/employees");
+        Assert.Contains(employees!, employee => employee.Id == _employeeId);
         Assert.Equal(HttpStatusCode.Unauthorized, (await _client.PostAsJsonAsync("/api/agent/v1/enroll", new EnrollAgentRequest(enrollment.Code, "REPLAY-PC"))).StatusCode);
         var expired = await (await PostCsrfAsync("/api/admin/enrollments")).Content.ReadFromJsonAsync<CreateEnrollmentResponse>(); Assert.NotNull(expired);
         using (var expireScope = _factory!.Services.CreateScope())
